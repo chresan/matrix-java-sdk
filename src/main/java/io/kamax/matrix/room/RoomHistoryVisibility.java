@@ -20,6 +20,8 @@
 
 package io.kamax.matrix.room;
 
+import java.util.EnumSet;
+
 /**
  * Room history visibility settings available in the specification.
  */
@@ -31,7 +33,12 @@ public enum RoomHistoryVisibility {
 
     Shared("shared"),
 
-    WorldReadable("world_readable");
+    WorldReadable("world_readable"),
+    
+    /**
+     * Indicates that the value could not be mapped to an enum value.
+     */
+    Unknown("<unknown>");
 
     private String id;
 
@@ -51,4 +58,18 @@ public enum RoomHistoryVisibility {
     public boolean is(String id) {
         return this.id.contentEquals(id);
     }
+    
+    
+    public static RoomHistoryVisibility fromJson(String value) {
+        if ( value == null ) {
+            return Unknown;
+        }
+        for (RoomHistoryVisibility eval: EnumSet.allOf(RoomHistoryVisibility.class)) {
+            if ( eval != Unknown && eval.get().equals(value) ) {
+                return eval;
+            }
+        }
+        return Unknown;
+    }
+    
 }

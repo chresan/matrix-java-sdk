@@ -22,8 +22,18 @@
 package io.kamax.matrix.event;
 
 import com.google.gson.JsonObject;
+import experimental.event.EventType;
 
 public interface _MatrixEvent {
+
+    /**
+     * Returns the event type enum symbol, or {@link EventType#UNDEFINED} if
+     *   the json type could not be mapped to an enum value.
+     * @return event type
+     */
+    default EventType getEventType() {
+        return EventType.fromJson(getType());
+    }
 
     String getType();
 

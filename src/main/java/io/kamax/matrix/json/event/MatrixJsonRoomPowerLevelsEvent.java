@@ -32,6 +32,9 @@ import java.util.Map;
 import java.util.stream.Collectors;
 import java8.util.Optional;
 
+import experimental.om.PowerLevel;
+import experimental.om.PowerLevel.Kind;
+
 public class MatrixJsonRoomPowerLevelsEvent extends MatrixJsonRoomEvent implements _RoomPowerLevelsEvent {
 
     private Content content;
@@ -42,158 +45,136 @@ public class MatrixJsonRoomPowerLevelsEvent extends MatrixJsonRoomEvent implemen
         content = new Content(getObj("content"));
     }
 
+    
+    private Optional<Double> getAsDouble(Kind kind) {
+        return get(kind).map(PowerLevel::getLevel);
+    }
+    
     @Override
-    public Optional<Double> getBan() {
-        return Optional.ofNullable(content.getBan());
+    public Map<PowerLevel.Kind, PowerLevel> getPowerLevels() {
+        return content.simpleLevelMap;
+    }
+    
+    @Override
+    public Map<String, PowerLevel> getPowerLevelMap(PowerLevel.Kind kind) {
+        if ( kind == null ) {
+            return Collections.emptyMap();
+        }
+        switch (kind) {
+            case EVENTS: return content.eventsMap;
+            case USERS: return content.usersMap;
+            case NOTIFICATIONS: return content.notificationsMap;
+            default: return Collections.emptyMap();
+        }
+    }
+    
+    private Map<String, Double> mapToOld(Map<String, PowerLevel> map) {
+        return map.values().stream().collect(
+            Collectors.toMap(PowerLevel::getKey, PowerLevel::getLevel)
+        );
     }
 
     @Override
     public Map<String, Double> getEvents() {
-        return Collections.unmodifiableMap(content.getEvents());
-    }
-
-    @Override
-    public Optional<Double> getEventsDefault() {
-        return Optional.ofNullable(content.getEventsDefault());
-    }
-
-    @Override
-    public Optional<Double> getInvite() {
-        return Optional.ofNullable(content.getInvite());
-    }
-
-    @Override
-    public Optional<Double> getKick() {
-        return Optional.ofNullable(content.getKick());
-    }
-
-    @Override
-    public Optional<Double> getRedact() {
-        return Optional.ofNullable(content.getRedact());
-    }
-
-    @Override
-    public Optional<Double> getStateDefault() {
-        return Optional.ofNullable(content.getStateDefault());
+        return mapToOld(content.eventsMap);
     }
 
     @Override
     public Map<String, Double> getUsers() {
-        return Collections.unmodifiableMap(content.getUsers());
+        return mapToOld(content.usersMap);
+    }
+
+    @Override
+    public Optional<Double> getBan() {
+        return getAsDouble(Kind.BAN);
+    }
+
+    @Override
+    public Optional<Double> getEventsDefault() {
+        return getAsDouble(Kind.EVENTS_DEFAULT);
+    }
+
+    @Override
+    public Optional<Double> getInvite() {
+        return getAsDouble(Kind.INVITE);
+    }
+
+    @Override
+    public Optional<Double> getKick() {
+        return getAsDouble(Kind.KICK);
+    }
+
+    @Override
+    public Optional<Double> getRedact() {
+        return getAsDouble(Kind.REDACT);
+    }
+
+    @Override
+    public Optional<Double> getStateDefault() {
+        return getAsDouble(Kind.STATE_DEFAULT);
     }
 
     @Override
     public Optional<Double> getUsersDefault() {
-        return Optional.ofNullable(content.getUsersDefault());
+        return getAsDouble(Kind.USERS_DEFAULT);
     }
 
     private class Content extends MatrixJsonObject {
 
-        private Double ban;
         private Map<String, Double> events = new HashMap<>();
-        private Double eventsDefault;
-        private Double invite;
-        private Double kick;
-        private Double redact;
-        private Double stateDefault;
         private Map<String, Double> users = new HashMap<>();
-        private Double usersDefault;
+        private Map<PowerLevel.Kind,PowerLevel> simpleLevelMap;
+        private Map<String, PowerLevel> eventsMap;
+        private Map<String, PowerLevel> usersMap;
+        private Map<String, PowerLevel> notificationsMap;
 
         Content(JsonObject obj) {
             super(obj);
-
-            setBan(getDoubleIfPresent("ban"));
-            setEventsDefault(getDoubleIfPresent("events_default"));
-            setInvite(getDoubleIfPresent("invite"));
-            setKick(getDoubleIfPresent("kick"));
-            setRedact(getDoubleIfPresent("redact"));
-            setStateDefault(getDoubleIfPresent("state_default"));
-            setUsersDefault(getDoubleIfPresent("users_default"));
-
-            GsonUtil.findObj(obj, "events").ifPresent(eventsJson -> {
-                Map<String, Double> eventsMap = eventsJson.entrySet().stream()
-                        .collect(Collectors.toMap(it -> it.getKey(), it -> it.getValue().getAsDouble()));
-                setEvents(eventsMap);
-            });
-
-            GsonUtil.findObj(obj, "users").ifPresent(usersJson -> {
-                Map<String, Double> usersMap = usersJson.entrySet().stream()
-                        .collect(Collectors.toMap(it -> it.getKey(), it -> it.getValue().getAsDouble()));
-                setUsers(usersMap);
-            });
+            simpleLevelMap  = new HashMap<>();
+            
+            addPowerLevel(Kind.BAN,             "ban");
+            addPowerLevel(Kind.EVENTS_DEFAULT,  "events_default");
+            addPowerLevel(Kind.INVITE,          "invite");
+            addPowerLevel(Kind.KICK,            "kick");
+            addPowerLevel(Kind.REDACT,          "redact");
+            addPowerLevel(Kind.STATE_DEFAULT,   "state_default");
+            addPowerLevel(Kind.USERS_DEFAULT,   "users_default");
+            
+            this.eventsMap =
+                GsonUtil.findObj(obj, "events").map(
+                    it -> asPowerLevelMap(Kind.EVENTS, it))
+                    .orElse(Collections.emptyMap());
+            this.usersMap =
+                GsonUtil.findObj(obj, "users").map(
+                    it -> asPowerLevelMap(Kind.USERS, it))
+                    .orElse(Collections.emptyMap());
+            this.notificationsMap =
+                GsonUtil.findObj(obj, "notifications").map(
+                    it -> asPowerLevelMap(Kind.NOTIFICATIONS, it))
+                    .orElse(Collections.emptyMap());
+        }
+        
+        private Map<String, PowerLevel> asPowerLevelMap(Kind kind, JsonObject obj) {
+            return obj
+                .entrySet()
+                .stream()
+                .collect(Collectors.toMap(
+                    it -> it.getKey(),
+                    it -> PowerLevel.of(
+                            kind, 
+                            it.getKey(), 
+                            it.getValue().getAsDouble()
+                        )
+                ));
+        }
+        
+        private void addPowerLevel(PowerLevel.Kind kind, String name ) {
+            Double value = getDoubleIfPresent(name);
+            if ( value != null ) {
+                simpleLevelMap.put(kind, PowerLevel.of(kind, value));
+            }
         }
 
-        Double getBan() {
-            return ban;
-        }
-
-        void setBan(Double ban) {
-            this.ban = ban;
-        }
-
-        Double getEventsDefault() {
-            return eventsDefault;
-        }
-
-        void setEventsDefault(Double eventsDefault) {
-            this.eventsDefault = eventsDefault;
-        }
-
-        Map<String, Double> getEvents() {
-            return events;
-        }
-
-        void setEvents(Map<String, Double> events) {
-            this.events.putAll(events);
-        }
-
-        Double getInvite() {
-            return invite;
-        }
-
-        void setInvite(Double invite) {
-            this.invite = invite;
-        }
-
-        Double getKick() {
-            return kick;
-        }
-
-        void setKick(Double kick) {
-            this.kick = kick;
-        }
-
-        Double getRedact() {
-            return redact;
-        }
-
-        void setRedact(Double redact) {
-            this.redact = redact;
-        }
-
-        Double getStateDefault() {
-            return stateDefault;
-        }
-
-        void setStateDefault(Double stateDefault) {
-            this.stateDefault = stateDefault;
-        }
-
-        Map<String, Double> getUsers() {
-            return users;
-        }
-
-        void setUsers(Map<String, Double> users) {
-            this.users.putAll(users);
-        }
-
-        Double getUsersDefault() {
-            return usersDefault;
-        }
-
-        void setUsersDefault(Double usersDefault) {
-            this.usersDefault = usersDefault;
-        }
 
     }
 
